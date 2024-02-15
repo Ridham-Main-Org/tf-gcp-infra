@@ -24,3 +24,15 @@ variable "vpc" {
 variable "ct" {
 
 }
+
+variable "subnet1" {
+
+}
+
+variable "subnet2" {
+
+}
+
+variable "route1" {
+
+}
