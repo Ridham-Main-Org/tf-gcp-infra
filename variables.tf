@@ -36,3 +36,15 @@ variable "subnet2" {
 variable "route1" {
 
 }
+
+variable "internet-gateway" {
+
+}
+
+variable "cidr-range1"{
+
+}
+
+variable "cidr-range2" {
+  
+}
