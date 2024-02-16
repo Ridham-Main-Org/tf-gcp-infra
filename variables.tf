@@ -41,10 +41,10 @@ variable "internet-gateway" {
 
 }
 
-variable "cidr-range1"{
+variable "cidr-range1" {
 
 }
 
 variable "cidr-range2" {
-  
+
 }
