@@ -48,3 +48,7 @@ variable "cidr-range1" {
 variable "cidr-range2" {
 
 }
+
+variable "dest-range" {
+
+}
