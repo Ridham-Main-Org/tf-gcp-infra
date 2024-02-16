@@ -17,7 +17,7 @@ resource "google_compute_subnetwork" "webapp_subnet" {
   name          = "${var.subnet1}-${uuid()}"
   ip_cidr_range = "10.0.1.0/24"
   network       = google_compute_network.main_vpc_network[count.index].self_link
-  region        = "us-west2"
+  region        = var.region
 }
 
 resource "google_compute_subnetwork" "db_subnet" {
@@ -25,7 +25,7 @@ resource "google_compute_subnetwork" "db_subnet" {
   name          = "${var.subnet2}-${uuid()}"
   ip_cidr_range = "10.0.2.0/24"
   network       = google_compute_network.main_vpc_network[count.index].self_link
-  region        = "us-west2"
+  region        = var.region
 }
 
 resource "google_compute_route" "webapp_subnet_route" {
@@ -33,7 +33,7 @@ resource "google_compute_route" "webapp_subnet_route" {
   name             = "${var.route1}-${uuid()}"
   dest_range       = "0.0.0.0/0"
   network          = google_compute_network.main_vpc_network[count.index].self_link
-  next_hop_gateway = "default-internet-gateway"
+  next_hop_gateway = var.internet-gateway
   priority         = 100
 }
 
