@@ -52,3 +52,11 @@ variable "cidr-range2" {
 variable "dest-range" {
 
 }
+
+variable "custom-image-name"{
+
+}
+
+vairable "instance-zone"{
+  
+}
