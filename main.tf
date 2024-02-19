@@ -56,7 +56,7 @@ resource "google_compute_firewall" "test-firewall" {
   target_tags   = ["foo-instances"]
 }
 resource "google_compute_instance" "vm-instance" {
-  name         = "${var.instance-name}-${count}"
+  name         = "${var.instance-name}-${uuid()}"
   machine_type = "n2-standard-2"
   zone         = var.instance-zone
 
