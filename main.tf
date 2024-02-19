@@ -29,7 +29,7 @@ resource "google_compute_subnetwork" "db_subnet" {
 }
 
 resource "google_compute_route" "webapp_subnet_route" {
-  count            = var
+  count            = var.ct
   name             = "${var.route1}-${uuid()}"
   dest_range       = "0.0.0.0/0"
   network          = google_compute_network.main_vpc_network[count.index].self_link
