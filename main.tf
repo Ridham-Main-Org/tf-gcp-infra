@@ -39,7 +39,7 @@ resource "google_compute_route" "webapp_subnet_route" {
 
 resource "google_compute_firewall" "test-firewall" {
   name    = "first-firewall"
-  network = google_compute_network.main_vpc_network
+  network = google_compute_network.main_vpc_network[count.index].self_link
 
   allow {
     protocol = "icmp"
@@ -69,8 +69,9 @@ resource "google_compute_instance" "vm-instance" {
   }
 
   network_interface {
-    network    = google_compute_network.main_vpc_network
-    subnetwork = google_compute_subnetwork.webapp_subnet
+    network    = google_compute_network.main_vpc_network[count.index].self_link
+    subnetwork = google_compute_subnetwork.webapp_subnet[count.index].self_link
+
 
     access_config {
       // Ephemeral public IP
