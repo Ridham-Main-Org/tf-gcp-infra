@@ -51,17 +51,14 @@ resource "google_compute_firewall" "test-firewall" {
   }
 
   # source_tags = ["web"]
-  direction = "INGRESS"
+  direction     = "INGRESS"
   source_ranges = ["0.0.0.0/0"]
-  target_tags = ["foo-instances"]
+  target_tags   = ["foo-instances"]
 }
-
-
-
 resource "google_compute_instance" "vm-instance" {
   name         = "${instance-name}-${count}"
   machine_type = "n2-standard-2"
-  zone         = "us-central1-a"
+  zone         = var.instance-zone
 
   tags = ["foo-instances"]
 
@@ -72,9 +69,9 @@ resource "google_compute_instance" "vm-instance" {
   }
 
   network_interface {
-    network = google_compute_network.main_vpc_network[count.index].self_link
+    network    = google_compute_network.main_vpc_network[count.index].self_link
     subnetwork = google_compute_subnetwork.webapp_subnet[count.index].self_link
-    
+
 
     access_config {
       // Ephemeral public IP
