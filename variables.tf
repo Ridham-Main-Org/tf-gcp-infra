@@ -60,6 +60,6 @@ variable "custom-image-name" {
 variable "instance-name" {
 
 }
-vairable "instance-zone" {
+variable "instance-zone" {
 
 }
