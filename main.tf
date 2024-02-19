@@ -37,3 +37,73 @@ resource "google_compute_route" "webapp_subnet_route" {
   priority         = 100
 }
 
+resource "google_compute_firewall" "test-firewall" {
+  name    = "first-firewall"
+  network = google_compute_network.main_vpc_network[count.index].self_link
+
+  allow {
+    protocol = "icmp"
+  }
+
+  allow {
+    protocol = "tcp"
+    ports    = ["3000"]
+  }
+
+  # source_tags = ["web"]
+  direction = "INGRESS"
+  source_ranges = ["0.0.0.0/0"]
+  target_tags = ["foo-instances"]
+}
+
+
+
+resource "google_compute_instance" "vm-instance" {
+  name         = "${instance-name}-${count}"
+  machine_type = "n2-standard-2"
+  zone         = "us-central1-a"
+
+  tags = ["foo-instances"]
+
+  boot_disk {
+    initialize_params {
+      image = "${var.project}/${var.custom-image-name}"
+    }
+  }
+
+  network_interface {
+    network = google_compute_network.main_vpc_network[count.index].self_link
+    subnetwork = google_compute_subnetwork.webapp_subnet[count.index].self_link
+    
+
+    access_config {
+      // Ephemeral public IP
+    }
+  }
+  metadata_startup_script = "echo hi > /test.txt"
+}
+
+
+# resource "google_compute_instance" "default" {
+#   name         = "${instance-name}-${count}"
+#   machine_type = "n2-standard-2"
+#   zone         = "us-central1-a"
+
+#   # tags = ["foo", "bar"]
+
+#   boot_disk {
+#     initialize_params {
+#       image = "${var.project}/${var.custom-image-name}"
+#     }
+#   }
+
+#   network_interface {
+#     network = "default"
+
+#     access_config {
+#       // Ephemeral public IP
+#     }
+#   }
+#   metadata_startup_script = "echo hi > /test.txt"
+# }
+
