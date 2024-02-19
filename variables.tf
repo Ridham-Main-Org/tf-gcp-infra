@@ -53,10 +53,13 @@ variable "dest-range" {
 
 }
 
-variable "custom-image-name"{
+variable "custom-image-name" {
 
 }
 
-vairable "instance-zone"{
-  
+variable "instance-name" {
+
+}
+vairable "instance-zone" {
+
 }
