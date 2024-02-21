@@ -63,3 +63,15 @@ variable "instance-name" {
 variable "instance-zone" {
 
 }
+
+variable "machine_type" {
+
+}
+
+variable "instance_tag" {
+
+}
+
+variable "firewall_name" {
+
+}

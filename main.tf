@@ -37,9 +37,10 @@ resource "google_compute_route" "webapp_subnet_route" {
   priority         = 100
 }
 
-resource "google_compute_firewall" "test-firewall" {
-  name    = "first-firewall"
-  network = google_compute_network.main_vpc_network
+resource "google_compute_firewall" "my-firewall" {
+  count   = length(google_compute_network.main_vpc_network)
+  name    = "${var.firewall_name}-${uuid()}"
+  network = google_compute_network.main_vpc_network[count.index].name
 
   allow {
     protocol = "icmp"
@@ -47,20 +48,22 @@ resource "google_compute_firewall" "test-firewall" {
 
   allow {
     protocol = "tcp"
-    ports    = ["3000"]
+    ports    = ["3000", "22"]
   }
 
   # source_tags = ["web"]
   direction     = "INGRESS"
   source_ranges = ["0.0.0.0/0"]
-  target_tags   = ["foo-instances"]
+  target_tags   = [var.instance_tag]
 }
 resource "google_compute_instance" "vm-instance" {
+  count = length(google_compute_network.main_vpc_network)
+
   name         = "${var.instance-name}-${uuid()}"
-  machine_type = "n2-standard-2"
+  machine_type = var.machine_type
   zone         = var.instance-zone
 
-  tags = ["foo-instances"]
+  tags = [var.instance_tag]
 
   boot_disk {
     initialize_params {
@@ -69,8 +72,8 @@ resource "google_compute_instance" "vm-instance" {
   }
 
   network_interface {
-    network    = google_compute_network.main_vpc_network
-    subnetwork = google_compute_subnetwork.webapp_subnet
+    network    = google_compute_network.main_vpc_network[count.index].name
+    subnetwork = google_compute_subnetwork.webapp_subnet[count.index].name
 
     access_config {
       // Ephemeral public IP
@@ -78,28 +81,3 @@ resource "google_compute_instance" "vm-instance" {
   }
   metadata_startup_script = "echo hi > /test.txt"
 }
-
-
-# resource "google_compute_instance" "default" {
-#   name         = "${instance-name}-${count}"
-#   machine_type = "n2-standard-2"
-#   zone         = "us-central1-a"
-
-#   # tags = ["foo", "bar"]
-
-#   boot_disk {
-#     initialize_params {
-#       image = "${var.project}/${var.custom-image-name}"
-#     }
-#   }
-
-#   network_interface {
-#     network = "default"
-
-#     access_config {
-#       // Ephemeral public IP
-#     }
-#   }
-#   metadata_startup_script = "echo hi > /test.txt"
-# }
-
