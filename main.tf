@@ -53,7 +53,7 @@ resource "google_compute_firewall" "my-firewall" {
 
   # source_tags = ["web"]
   direction     = var.direction
-  source_ranges = ["0.0.0.0/0"]
+  source_ranges = [var.source_ranges]
   target_tags   = [var.instance_tag]
 }
 resource "google_compute_instance" "vm-instance" {
