@@ -48,11 +48,11 @@ resource "google_compute_firewall" "my-firewall" {
 
   allow {
     protocol = "tcp"
-    ports    = ["3000", "22"]
+    ports    = var.allowed_ports
   }
 
   # source_tags = ["web"]
-  direction     = "INGRESS"
+  direction     = var.direction
   source_ranges = ["0.0.0.0/0"]
   target_tags   = [var.instance_tag]
 }
@@ -68,6 +68,8 @@ resource "google_compute_instance" "vm-instance" {
   boot_disk {
     initialize_params {
       image = "${var.project}/${var.custom-image-name}"
+      size  = var.disk_size
+      type  = var.disk_type
     }
   }
 

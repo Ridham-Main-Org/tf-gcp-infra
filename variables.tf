@@ -75,3 +75,19 @@ variable "instance_tag" {
 variable "firewall_name" {
 
 }
+
+variable "disk_size" {
+
+}
+
+variable "disk_type" {
+
+}
+
+variable "allowed_ports" {
+
+}
+
+variable "direction" {
+
+}
