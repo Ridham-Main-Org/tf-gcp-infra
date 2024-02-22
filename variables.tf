@@ -68,6 +68,10 @@ variable "machine_type" {
 
 }
 
+variable "source_ranges" {
+
+}
+
 variable "instance_tag" {
 
 }
