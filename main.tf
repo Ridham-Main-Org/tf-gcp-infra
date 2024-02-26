@@ -58,6 +58,11 @@ resource "google_compute_firewall" "my-firewall" {
     ports    = var.allowed_ports
   }
 
+  deny {
+    protocol = "tcp"
+    ports    = ["22"]
+  }
+
   # source_tags = ["web"]
   direction     = var.direction
   source_ranges = [var.source_ranges]
