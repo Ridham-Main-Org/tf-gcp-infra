@@ -95,3 +95,23 @@ variable "allowed_ports" {
 variable "direction" {
 
 }
+
+variable "region_sql_instance" {
+
+}
+
+variable "db_version" {
+
+}
+
+variable "sql_instance_disk_type" {
+
+}
+
+variable "service_connection" {
+
+}
+
+variable "address_type" {
+
+}
