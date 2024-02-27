@@ -58,20 +58,21 @@ resource "google_compute_firewall" "my-firewall" {
     ports    = var.allowed_ports
   }
 
-  deny {
-    protocol = "tcp"
-    ports    = ["22"]
-  }
+  # deny {
+  #   protocol = "tcp"
+  #   ports    = ["22"]
+  # }
 
   # source_tags = ["web"]
   direction     = var.direction
   source_ranges = [var.source_ranges]
   target_tags   = [var.instance_tag]
 }
-resource "google_compute_instance" "vm-instance" {
-  count = length(google_compute_network.main_vpc_network)
 
-  name         = "${var.instance-name}-${count.index}"
+resource "google_compute_instance" "vm-instance" {
+  # count = length(google_compute_network.main_vpc_network)
+
+  name         = var.instance-name
   machine_type = var.machine_type
   zone         = var.instance-zone
 
@@ -86,28 +87,46 @@ resource "google_compute_instance" "vm-instance" {
   }
 
   network_interface {
-    network    = google_compute_network.main_vpc_network[count.index].name
-    subnetwork = google_compute_subnetwork.webapp_subnet[count.index].name
+    network    = google_compute_network.main_vpc_network[0].name
+    subnetwork = google_compute_subnetwork.webapp_subnet[0].name
 
     access_config {
       // Ephemeral public IP
     }
   }
-  metadata_startup_script = "echo hi > /test.txt"
+  metadata_startup_script = <<-EOT
+#!/bin/bash
+set -e
+
+# Check if .env file already exists in /opt directory
+if [ ! -f /opt/.env ]; then
+    # Create .env file with database connection details
+    echo "DB_HOST=${google_sql_database_instance.postgres.ip_address.0.ip_address}" > /opt/.env
+    echo "DB_NAME=${google_sql_database.database.name}" >> /opt/.env
+    echo "DB_USER=${google_sql_user.users.name}" >> /opt/.env
+    echo "DB_PORT=5432" >> /opt/.env
+    echo "DB_PASSWORD=${google_sql_user.users.password}" >> /opt/.env
+fi
+
+echo ".env file created with the following content:"
+cat /opt/.env
+sudo systemctl daemon-reload
+sudo systemctl start gcp-centos8.service
+sudo systemctl enable gcp-centos8.service
+
+EOT
 }
 
-# [START compute_internal_ip_private_access]
 resource "google_compute_global_address" "default" {
-  count         = length(google_compute_network.main_vpc_network)
+  # count         = length(google_compute_network.main_vpc_network)
   provider      = google-beta
-  project       = google_compute_network.main_vpc_network[count.index].project
+  project       = google_compute_network.main_vpc_network[0].project
   name          = "global-psconnect-ip"
   address_type  = var.address_type
   purpose       = "VPC_PEERING"
-  network       = google_compute_network.main_vpc_network[count.index].id
+  network       = google_compute_network.main_vpc_network[0].id
   prefix_length = 16
 }
-# [END compute_internal_ip_private_access]
 
 # [START compute_forwarding_rule_private_access]
 # resource "google_compute_global_forwarding_rule" "default" {
@@ -127,18 +146,18 @@ resource "random_id" "db_name_suffix" {
 }
 
 resource "google_service_networking_connection" "private_vpc_connection" {
-  count    = length(google_compute_network.main_vpc_network)
+  # count    = length(google_compute_network.main_vpc_network)
   provider = google-beta
 
-  network                 = google_compute_network.main_vpc_network[count.index].id
+  network                 = google_compute_network.main_vpc_network[0].id
   service                 = var.service_connection
-  reserved_peering_ranges = [google_compute_global_address.default[count.index].name]
+  reserved_peering_ranges = [google_compute_global_address.default.name]
 }
 
 resource "google_sql_database_instance" "postgres" {
   # provider = google-beta
-  count               = length(google_compute_network.main_vpc_network)
-  name                = "postgres-instance-${count.index}"
+  # count               = length(google_compute_network.main_vpc_network)
+  name                = var.postgres_instance_name
   database_version    = var.db_version
   region              = var.region_sql_instance
   depends_on          = [google_service_networking_connection.private_vpc_connection]
@@ -154,15 +173,15 @@ resource "google_sql_database_instance" "postgres" {
 
     ip_configuration {
       ipv4_enabled    = false
-      private_network = google_compute_network.main_vpc_network[count.index].id
+      private_network = google_compute_network.main_vpc_network[0].id
     }
   }
 }
 
 resource "google_sql_database" "database" {
-  count    = length(google_compute_network.main_vpc_network)
-  name     = "webapp-${count.index}"
-  instance = google_sql_database_instance.postgres[count.index].name
+  # count    = length(google_compute_network.main_vpc_network)
+  name     = "webapp"
+  instance = google_sql_database_instance.postgres.name
 }
 
 resource "random_password" "password" {
@@ -171,11 +190,12 @@ resource "random_password" "password" {
   override_special = "!#$%&*()-_=+[]{}<>:?"
 }
 resource "google_sql_user" "users" {
-  count    = length(google_compute_network.main_vpc_network)
-  name     = "webapp-${count.index}"
-  instance = google_sql_database_instance.postgres[count.index].name
+  # count    = length(google_compute_network.main_vpc_network)
+  name     = "webapp"
+  instance = google_sql_database_instance.postgres.name
   password = random_password.password.result
 }
-output "token_value" {
-  value = nonsensitive(random_password.password.result)
-}
+# output "token_value" {
+#   value = nonsensitive(random_password.password.result)
+# }
+

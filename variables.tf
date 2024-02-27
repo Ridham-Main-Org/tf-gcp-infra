@@ -115,3 +115,7 @@ variable "service_connection" {
 variable "address_type" {
 
 }
+
+variable "postgres_instance_name" {
+
+}
