@@ -44,9 +44,9 @@ resource "google_compute_route" "webapp_subnet_route" {
   priority         = 100
 }
 
-resource "google_compute_firewall" "my-firewall" {
+resource "google_compute_firewall" "my-allow-firewall" {
   count   = length(google_compute_network.main_vpc_network)
-  name    = "${var.firewall_name}-${count.index}"
+  name    = "${var.firewall_name}-allow-${count.index}"
   network = google_compute_network.main_vpc_network[count.index].name
 
   allow {
@@ -58,11 +58,23 @@ resource "google_compute_firewall" "my-firewall" {
     ports    = var.allowed_ports
   }
 
-  # deny {
-  #   protocol = "tcp"
-  #   ports    = ["22"]
-  # }
+  priority = 900
+  # source_tags = ["web"]
+  direction     = var.direction
+  source_ranges = [var.source_ranges]
+  target_tags   = [var.instance_tag]
+}
 
+resource "google_compute_firewall" "my-deny-firewall" {
+  count   = length(google_compute_network.main_vpc_network)
+  name    = "${var.firewall_name}-deny-${count.index}"
+  network = google_compute_network.main_vpc_network[count.index].name
+
+  deny {
+    protocol = "tcp"
+  }
+
+  priority = 1000
   # source_tags = ["web"]
   direction     = var.direction
   source_ranges = [var.source_ranges]
