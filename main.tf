@@ -127,6 +127,12 @@ sudo systemctl start gcp-centos8.service
 sudo systemctl enable gcp-centos8.service
 
 EOT
+
+  service_account {
+    email  = google_service_account.service_account.email
+    scopes = ["cloud-platform"]
+  }
+
 }
 
 resource "google_compute_global_address" "default" {
@@ -139,19 +145,6 @@ resource "google_compute_global_address" "default" {
   network       = google_compute_network.main_vpc_network[0].id
   prefix_length = 16
 }
-
-# [START compute_forwarding_rule_private_access]
-# resource "google_compute_global_forwarding_rule" "default" {
-#   count                 = length(google_compute_network.main_vpc_network)
-#   provider              = google-beta
-#   project               = google_compute_network.main_vpc_network[count.index].project
-#   name                  = "globalrule"
-#   target                = "all-apis"
-#   network               = google_compute_network.main_vpc_network[count.index].id
-#   ip_address            = google_compute_global_address.default[count.index].id
-#   load_balancing_scheme = ""
-# }
-# [END compute_forwarding_rule_private_access]
 
 resource "random_id" "db_name_suffix" {
   byte_length = 4
@@ -207,7 +200,39 @@ resource "google_sql_user" "users" {
   instance = google_sql_database_instance.postgres.name
   password = random_password.password.result
 }
-# output "token_value" {
-#   value = nonsensitive(random_password.password.result)
-# }
+
+resource "google_service_account" "service_account" {
+  account_id   = "ops-service-account-id"
+  display_name = "Ops agent Service Account"
+  project      = var.project
+}
+
+resource "google_project_iam_binding" "logging-role" {
+  project = var.project
+  role    = var.logging_role
+
+  members = [
+    "serviceAccount:${google_service_account.service_account.email}",
+  ]
+}
+
+resource "google_project_iam_binding" "monitoring-metric-role" {
+  project = var.project
+  role    = var.monitoring_role
+
+  members = [
+    "serviceAccount:${google_service_account.service_account.email}",
+  ]
+}
+
+resource "google_dns_record_set" "dns-a-record" {
+  name         = var.dns_name
+  type         = "A"
+  ttl          = 300
+  managed_zone = var.dns_zone_name
+  rrdatas = [
+    google_compute_instance.vm-instance.network_interface.0.access_config.0.nat_ip,
+  ]
+}
+
 
