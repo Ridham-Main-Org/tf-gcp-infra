@@ -119,3 +119,18 @@ variable "address_type" {
 variable "postgres_instance_name" {
 
 }
+
+variable "dns_zone_name" {
+
+}
+
+variable "dns_name" {
+
+}
+
+variable "logging_role" {
+
+}
+variable "monitoring_role" {
+
+}
