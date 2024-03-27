@@ -128,14 +128,13 @@ sudo systemctl enable gcp-centos8.service
 EOT
 
   service_account {
-    email  = google_service_account.service_account.email
+    email  = google_service_account.ops_service_acc.email
     scopes = ["cloud-platform"]
   }
 
 }
 
 resource "google_compute_global_address" "default" {
-  # count         = length(google_compute_network.main_vpc_network)
   provider      = google-beta
   project       = google_compute_network.main_vpc_network[0].project
   name          = "global-psconnect-ip"
@@ -150,8 +149,7 @@ resource "random_id" "db_name_suffix" {
 }
 
 resource "google_service_networking_connection" "private_vpc_connection" {
-  provider = google-beta
-
+  provider                = google-beta
   network                 = google_compute_network.main_vpc_network[0].id
   service                 = var.service_connection
   reserved_peering_ranges = [google_compute_global_address.default.name]
@@ -178,7 +176,6 @@ resource "google_sql_database_instance" "postgres" {
 }
 
 resource "google_sql_database" "database" {
-  # count    = length(google_compute_network.main_vpc_network)
   name     = "webapp"
   instance = google_sql_database_instance.postgres.name
 }
@@ -194,8 +191,8 @@ resource "google_sql_user" "users" {
   password = random_password.password.result
 }
 
-resource "google_service_account" "service_account" {
-  account_id   = "ops-service-account-id"
+resource "google_service_account" "ops_service_acc" {
+  account_id   = "ops-service-account-id-new"
   display_name = "Ops agent Service Account"
   project      = var.project
 }
@@ -205,7 +202,7 @@ resource "google_project_iam_binding" "logging-role" {
   role    = var.logging_role
 
   members = [
-    "serviceAccount:${google_service_account.service_account.email}",
+    "serviceAccount:${google_service_account.ops_service_acc.email}",
   ]
 }
 
@@ -214,20 +211,20 @@ resource "google_project_iam_binding" "monitoring-metric-role" {
   role    = var.monitoring_role
 
   members = [
-    "serviceAccount:${google_service_account.service_account.email}",
+    "serviceAccount:${google_service_account.ops_service_acc.email}",
   ]
 }
 
 resource "google_pubsub_topic_iam_binding" "pubsub_binding" {
   project = var.project
-  role    = "roles/pubsub.editor"
+  role    = var.publisher_role
   topic   = google_pubsub_topic.verify_email.name
   members = [
-    "serviceAccount:${google_service_account.service_account.email}"
+    "serviceAccount:${google_service_account.ops_service_acc.email}"
   ]
 
   depends_on = [
-    google_service_account.service_account,
+    google_service_account.ops_service_acc,
     google_pubsub_topic.verify_email
   ]
 }
@@ -246,7 +243,7 @@ resource "google_dns_record_set" "dns-a-record" {
 resource "google_pubsub_topic" "verify_email" {
   name                       = "verify_email"
   project                    = var.project
-  message_retention_duration = "604800s"
+  message_retention_duration = var.topic_message_retentaion
 }
 
 
@@ -254,7 +251,7 @@ resource "google_pubsub_subscription" "subscription" {
   name  = "my-subscription"
   topic = google_pubsub_topic.verify_email.id
   # 20 minutes
-  message_retention_duration = "1200s"
+  message_retention_duration = var.subscription_message_retention
   retain_acked_messages      = true
   ack_deadline_seconds       = 600
   expiration_policy {
@@ -268,38 +265,45 @@ resource "google_pubsub_subscription" "subscription" {
 
 data "archive_file" "default" {
   type        = "zip"
-  output_path = "/tmp/function-source.zip"
+  output_path = var.bucket_output_path
   source_dir  = "./serverless/"
 }
 resource "google_storage_bucket" "my_bucket" {
-  name          = "my-cloud-bucket-${var.ct}"
+  name          = "my-vcloud-bucket-${var.ct}"
   force_destroy = true
   location      = var.region
   project       = var.project
 }
 
 resource "google_storage_bucket_object" "object" {
-  name   = "my-serverless-function-source.zip"
-  bucket = google_storage_bucket.my_bucket.name
-  source = data.archive_file.default.output_path # Add path to the zipped function source code
-  depends_on = [
-  google_storage_bucket.my_bucket]
+  name       = "my-serverless-function.zip"
+  bucket     = google_storage_bucket.my_bucket.name
+  source     = data.archive_file.default.output_path # Add path to the zipped function source code
+  depends_on = [google_storage_bucket.my_bucket]
 }
 resource "google_vpc_access_connector" "connector" {
   name          = "vpc-con"
-  ip_cidr_range = "10.8.0.0/28"
+  ip_cidr_range = var.vpc_connector_cidr_range
   region        = var.region
   network       = google_compute_network.main_vpc_network[0].self_link
+  depends_on = [
+    google_compute_network.main_vpc_network[0],
+    google_sql_database.database
+  ]
 }
 
+resource "google_service_account" "cloud_func_service_acc" {
+  account_id   = "cloud-func-service-account-id"
+  display_name = "cloud func invoker Service Account"
+  project      = var.project
+}
 resource "google_cloudfunctions2_function" "default" {
-  name        = "my-cloud-function"
-  location    = var.region
-  description = "a new function"
+  name     = "my-cloud-function"
+  location = var.region
 
   build_config {
     runtime     = "nodejs20"
-    entry_point = "helloPubSub" # Set the entry point
+    entry_point = var.cloud_func_entry_point # Set the entry point
     source {
       storage_source {
         bucket = google_storage_bucket.my_bucket.name
@@ -311,7 +315,7 @@ resource "google_cloudfunctions2_function" "default" {
   service_config {
     max_instance_count = 1
     available_memory   = "256M"
-    timeout_seconds    = 540
+    timeout_seconds    = var.timeout_sec
     ingress_settings   = "ALLOW_ALL"
     environment_variables = {
       DB_HOST         = "${google_sql_database_instance.postgres.ip_address.0.ip_address}"
@@ -321,7 +325,8 @@ resource "google_cloudfunctions2_function" "default" {
       DB_PASSWORD     = "${google_sql_user.users.password}"
       MAILGUN_API_KEY = var.mailgun_api_key
     }
-    service_account_email         = google_service_account.service_account.email
+    service_account_email = google_service_account.cloud_func_service_acc.email
+    # service_account_email         = google_service_account.ops_service_acc.email
     vpc_connector                 = google_vpc_access_connector.connector.name
     vpc_connector_egress_settings = "PRIVATE_RANGES_ONLY"
   }
@@ -330,15 +335,21 @@ resource "google_cloudfunctions2_function" "default" {
   event_trigger {
     trigger_region        = var.region
     event_type            = "google.cloud.pubsub.topic.v1.messagePublished"
-    service_account_email = google_service_account.service_account.email
-    pubsub_topic          = google_pubsub_topic.verify_email.id
-    retry_policy          = "RETRY_POLICY_RETRY"
+    service_account_email = google_service_account.cloud_func_service_acc.email
+    # service_account_email = google_service_account.ops_service_acc.email
+
+    pubsub_topic = google_pubsub_topic.verify_email.id
+    # retry_policy          = "RETRY_POLICY_RETRY"
   }
 
   depends_on = [
     google_storage_bucket.my_bucket,
-    google_storage_bucket_object.object
-
+    google_storage_bucket_object.object,
+    google_pubsub_topic.verify_email,
+    google_pubsub_topic_iam_binding.pubsub_binding,
+    google_vpc_access_connector.connector,
+    google_sql_database.database,
+    google_compute_global_address.default
   ]
 }
 
@@ -346,17 +357,18 @@ resource "google_cloud_run_service_iam_binding" "cloudfunction_binding" {
   project  = google_cloudfunctions2_function.default.project
   location = google_cloudfunctions2_function.default.location
   service  = google_cloudfunctions2_function.default.name
-  role     = "roles/run.invoker"
+  role     = var.invoker_role
   members = [
-    "serviceAccount:${google_service_account.service_account.email}"
+    "serviceAccount:${google_service_account.cloud_func_service_acc.email}"
+    # "serviceAccount:${google_service_account.ops_service_acc.email}"
   ]
 
   depends_on = [
-    google_service_account.service_account,
+    # google_service_account.ops_service_acc,
+    google_service_account.cloud_func_service_acc,
     google_cloudfunctions2_function.default
   ]
 }
-
 
 output "function_uri" {
   value = google_cloudfunctions2_function.default.service_config[0].uri
