@@ -134,3 +134,11 @@ variable "logging_role" {
 variable "monitoring_role" {
 
 }
+
+variable "db_port" {
+
+}
+
+variable "mailgun_api_key" {
+
+}

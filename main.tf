@@ -111,11 +111,12 @@ set -e
 # Check if .env file already exists in /opt directory
 if [ ! -f /opt/.env ]; then
     # Create .env file with database connection details
-    echo "DB_HOST=${google_sql_database_instance.postgres.ip_address.0.ip_address}" > /opt/.env
-    echo "DB_NAME=${google_sql_database.database.name}" >> /opt/.env
-    echo "DB_USER=${google_sql_user.users.name}" >> /opt/.env
+    echo "DB_HOST='${google_sql_database_instance.postgres.ip_address.0.ip_address}'" > /opt/.env
+    echo "DB_NAME='${google_sql_database.database.name}'" >> /opt/.env
+    echo "DB_USER='${google_sql_user.users.name}'" >> /opt/.env
     echo "DB_PORT=5432" >> /opt/.env
-    echo "DB_PASSWORD=${google_sql_user.users.password}" >> /opt/.env
+    echo "DB_PASSWORD='${google_sql_user.users.password}'" >> /opt/.env
+    echo "TOPIC_NAME='projects/celestial-gecko-414117/topics/${google_pubsub_topic.verify_email.name}'" >> /opt/.env
 fi
 
 echo ".env file created with the following content:"
@@ -220,14 +221,14 @@ resource "google_project_iam_binding" "monitoring-metric-role" {
 resource "google_pubsub_topic_iam_binding" "pubsub_binding" {
   project = var.project
   role    = "roles/pubsub.editor"
-  topic   = google_pubsub_topic.new_demo_topic.name
+  topic   = google_pubsub_topic.verify_email.name
   members = [
     "serviceAccount:${google_service_account.service_account.email}"
   ]
 
   depends_on = [
     google_service_account.service_account,
-    google_pubsub_topic.new_demo_topic
+    google_pubsub_topic.verify_email
   ]
 }
 
@@ -242,8 +243,8 @@ resource "google_dns_record_set" "dns-a-record" {
   ]
 }
 
-resource "google_pubsub_topic" "new_demo_topic" {
-  name                       = "demotopic"
+resource "google_pubsub_topic" "verify_email" {
+  name                       = "verify_email"
   project                    = var.project
   message_retention_duration = "604800s"
 }
@@ -251,7 +252,7 @@ resource "google_pubsub_topic" "new_demo_topic" {
 
 resource "google_pubsub_subscription" "subscription" {
   name  = "my-subscription"
-  topic = google_pubsub_topic.new_demo_topic.id
+  topic = google_pubsub_topic.verify_email.id
   # 20 minutes
   message_retention_duration = "1200s"
   retain_acked_messages      = true
@@ -271,7 +272,7 @@ data "archive_file" "default" {
   source_dir  = "./serverless/"
 }
 resource "google_storage_bucket" "my_bucket" {
-  name          = "my-xxjxjxjs-${var.ct}"
+  name          = "my-cloud-bucket-${var.ct}"
   force_destroy = true
   location      = var.region
   project       = var.project
@@ -313,13 +314,14 @@ resource "google_cloudfunctions2_function" "default" {
     timeout_seconds    = 540
     ingress_settings   = "ALLOW_ALL"
     environment_variables = {
-      DB_HOST     = "${google_sql_database_instance.postgres.ip_address.0.ip_address}"
-      DB_NAME     = "${google_sql_database.database.name}"
-      DB_USER     = "${google_sql_user.users.name}"
-      DB_PORT     = "5432"
-      DB_PASSWORD = "${google_sql_user.users.password}"
+      DB_HOST         = "${google_sql_database_instance.postgres.ip_address.0.ip_address}"
+      DB_NAME         = "${google_sql_database.database.name}"
+      DB_USER         = "${google_sql_user.users.name}"
+      DB_PORT         = "${var.db_port}"
+      DB_PASSWORD     = "${google_sql_user.users.password}"
+      MAILGUN_API_KEY = var.mailgun_api_key
     }
-    service_account_email         = "1039297424411-compute@developer.gserviceaccount.com"
+    service_account_email         = google_service_account.service_account.email
     vpc_connector                 = google_vpc_access_connector.connector.name
     vpc_connector_egress_settings = "PRIVATE_RANGES_ONLY"
   }
@@ -328,8 +330,8 @@ resource "google_cloudfunctions2_function" "default" {
   event_trigger {
     trigger_region        = var.region
     event_type            = "google.cloud.pubsub.topic.v1.messagePublished"
-    service_account_email = "1039297424411-compute@developer.gserviceaccount.com"
-    pubsub_topic          = google_pubsub_topic.new_demo_topic.id
+    service_account_email = google_service_account.service_account.email
+    pubsub_topic          = google_pubsub_topic.verify_email.id
     retry_policy          = "RETRY_POLICY_RETRY"
   }
 
