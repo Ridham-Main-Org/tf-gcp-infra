@@ -82,8 +82,6 @@ resource "google_compute_firewall" "my-deny-firewall" {
 }
 
 resource "google_compute_instance" "vm-instance" {
-  # count = length(google_compute_network.main_vpc_network)
-
   name         = var.instance-name
   machine_type = var.machine_type
   zone         = var.instance-zone
@@ -151,7 +149,6 @@ resource "random_id" "db_name_suffix" {
 }
 
 resource "google_service_networking_connection" "private_vpc_connection" {
-  # count    = length(google_compute_network.main_vpc_network)
   provider = google-beta
 
   network                 = google_compute_network.main_vpc_network[0].id
@@ -160,8 +157,6 @@ resource "google_service_networking_connection" "private_vpc_connection" {
 }
 
 resource "google_sql_database_instance" "postgres" {
-  # provider = google-beta
-  # count               = length(google_compute_network.main_vpc_network)
   name                = var.postgres_instance_name
   database_version    = var.db_version
   region              = var.region_sql_instance
@@ -169,9 +164,7 @@ resource "google_sql_database_instance" "postgres" {
   deletion_protection = false
 
   settings {
-    tier = "db-f1-micro"
-    # deletion_protection_enabled = false
-
+    tier              = "db-f1-micro"
     availability_type = var.routing_mode
     disk_type         = var.sql_instance_disk_type
     disk_size         = var.disk_size
@@ -192,10 +185,9 @@ resource "google_sql_database" "database" {
 resource "random_password" "password" {
   length           = 16
   special          = true
-  override_special = "!#$%&*()-_=+[]{}<>:?"
+  override_special = "_%@"
 }
 resource "google_sql_user" "users" {
-  # count    = length(google_compute_network.main_vpc_network)
   name     = "webapp"
   instance = google_sql_database_instance.postgres.name
   password = random_password.password.result
@@ -225,6 +217,21 @@ resource "google_project_iam_binding" "monitoring-metric-role" {
   ]
 }
 
+resource "google_pubsub_topic_iam_binding" "pubsub_binding" {
+  project = var.project
+  role    = "roles/pubsub.editor"
+  topic   = google_pubsub_topic.new_demo_topic.name
+  members = [
+    "serviceAccount:${google_service_account.service_account.email}"
+  ]
+
+  depends_on = [
+    google_service_account.service_account,
+    google_pubsub_topic.new_demo_topic
+  ]
+}
+
+
 resource "google_dns_record_set" "dns-a-record" {
   name         = var.dns_name
   type         = "A"
@@ -235,4 +242,120 @@ resource "google_dns_record_set" "dns-a-record" {
   ]
 }
 
+resource "google_pubsub_topic" "new_demo_topic" {
+  name                       = "demotopic"
+  project                    = var.project
+  message_retention_duration = "604800s"
+}
 
+
+resource "google_pubsub_subscription" "subscription" {
+  name  = "my-subscription"
+  topic = google_pubsub_topic.new_demo_topic.id
+  # 20 minutes
+  message_retention_duration = "1200s"
+  retain_acked_messages      = true
+  ack_deadline_seconds       = 600
+  expiration_policy {
+    ttl = "300000.5s"
+  }
+  retry_policy {
+    minimum_backoff = "10s"
+  }
+  enable_message_ordering = false
+}
+
+data "archive_file" "default" {
+  type        = "zip"
+  output_path = "/tmp/function-source.zip"
+  source_dir  = "./serverless/"
+}
+resource "google_storage_bucket" "my_bucket" {
+  name          = "my-xxjxjxjs-${var.ct}"
+  force_destroy = true
+  location      = var.region
+  project       = var.project
+}
+
+resource "google_storage_bucket_object" "object" {
+  name   = "my-serverless-function-source.zip"
+  bucket = google_storage_bucket.my_bucket.name
+  source = data.archive_file.default.output_path # Add path to the zipped function source code
+  depends_on = [
+  google_storage_bucket.my_bucket]
+}
+resource "google_vpc_access_connector" "connector" {
+  name          = "vpc-con"
+  ip_cidr_range = "10.8.0.0/28"
+  region        = var.region
+  network       = google_compute_network.main_vpc_network[0].self_link
+}
+
+resource "google_cloudfunctions2_function" "default" {
+  name        = "my-cloud-function"
+  location    = var.region
+  description = "a new function"
+
+  build_config {
+    runtime     = "nodejs20"
+    entry_point = "helloPubSub" # Set the entry point
+    source {
+      storage_source {
+        bucket = google_storage_bucket.my_bucket.name
+        object = google_storage_bucket_object.object.name
+      }
+    }
+  }
+
+  service_config {
+    max_instance_count = 1
+    available_memory   = "256M"
+    timeout_seconds    = 540
+    ingress_settings   = "ALLOW_ALL"
+    environment_variables = {
+      DB_HOST     = "${google_sql_database_instance.postgres.ip_address.0.ip_address}"
+      DB_NAME     = "${google_sql_database.database.name}"
+      DB_USER     = "${google_sql_user.users.name}"
+      DB_PORT     = "5432"
+      DB_PASSWORD = "${google_sql_user.users.password}"
+    }
+    service_account_email         = "1039297424411-compute@developer.gserviceaccount.com"
+    vpc_connector                 = google_vpc_access_connector.connector.name
+    vpc_connector_egress_settings = "PRIVATE_RANGES_ONLY"
+  }
+
+
+  event_trigger {
+    trigger_region        = var.region
+    event_type            = "google.cloud.pubsub.topic.v1.messagePublished"
+    service_account_email = "1039297424411-compute@developer.gserviceaccount.com"
+    pubsub_topic          = google_pubsub_topic.new_demo_topic.id
+    retry_policy          = "RETRY_POLICY_RETRY"
+  }
+
+  depends_on = [
+    google_storage_bucket.my_bucket,
+    google_storage_bucket_object.object
+
+  ]
+}
+
+resource "google_cloud_run_service_iam_binding" "cloudfunction_binding" {
+  project  = google_cloudfunctions2_function.default.project
+  location = google_cloudfunctions2_function.default.location
+  service  = google_cloudfunctions2_function.default.name
+  role     = "roles/run.invoker"
+  members = [
+    "serviceAccount:${google_service_account.service_account.email}"
+  ]
+
+  depends_on = [
+    google_service_account.service_account,
+    google_cloudfunctions2_function.default
+  ]
+}
+
+
+output "function_uri" {
+  value = google_cloudfunctions2_function.default.service_config[0].uri
+}
