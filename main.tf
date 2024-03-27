@@ -348,7 +348,6 @@ resource "google_cloudfunctions2_function" "default" {
     google_pubsub_topic.verify_email,
     google_pubsub_topic_iam_binding.pubsub_binding,
     google_vpc_access_connector.connector,
-    google_sql_database.database,
     google_compute_global_address.default
   ]
 }
