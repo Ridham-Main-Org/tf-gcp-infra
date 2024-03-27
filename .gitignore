@@ -1,6 +1,8 @@
 # Local .terraform directories
 **/.terraform/*
 
+serverless
+
 celestial-gecko-414117-6df9ae342caf.json
 # .tfstate files
 *.tfstate
