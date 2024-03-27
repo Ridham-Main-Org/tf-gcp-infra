@@ -142,3 +142,31 @@ variable "db_port" {
 variable "mailgun_api_key" {
 
 }
+
+variable "publisher_role" {
+
+}
+
+variable "invoker_role" {
+
+}
+
+variable "timeout_sec" {
+
+}
+
+variable "cloud_func_entry_point" {
+
+}
+variable "vpc_connector_cidr_range" {
+
+}
+variable "bucket_output_path" {
+
+}
+variable "topic_message_retentaion" {
+
+}
+variable "subscription_message_retention" {
+
+}
