@@ -134,6 +134,148 @@ EOT
 
 }
 
+resource "google_compute_region_instance_template" "default" {
+  name        = "appserver-template"
+  description = "This template is used to create app server instances."
+
+  tags = [var.instance_tag]
+
+  labels = {
+    environment = "dev"
+  }
+
+  instance_description = "description assigned to instances"
+  machine_type         = var.machine_type
+  can_ip_forward       = false
+
+  scheduling {
+    automatic_restart   = true
+    on_host_maintenance = "MIGRATE"
+  }
+
+  // Create a new boot disk from an image
+  disk {
+    source_image      = "${var.project}/${var.custom-image-name}"
+    auto_delete       = true
+    boot              = true
+    # // backup the disk every day
+    # resource_policies = [google_compute_resource_policy.daily_backup.id]
+  }
+
+  network_interface {
+    network = "default"
+  }
+
+  metadata = <<-EOT
+#!/bin/bash
+set -e
+
+# Check if .env file already exists in /opt directory
+if [ ! -f /opt/.env ]; then
+    # Create .env file with database connection details
+    echo "DB_HOST='${google_sql_database_instance.postgres.ip_address.0.ip_address}'" > /opt/.env
+    echo "DB_NAME='${google_sql_database.database.name}'" >> /opt/.env
+    echo "DB_USER='${google_sql_user.users.name}'" >> /opt/.env
+    echo "DB_PORT=5432" >> /opt/.env
+    echo "DB_PASSWORD='${google_sql_user.users.password}'" >> /opt/.env
+    echo "TOPIC_NAME='projects/celestial-gecko-414117/topics/${google_pubsub_topic.verify_email.name}'" >> /opt/.env
+fi
+
+echo ".env file created with the following content:"
+cat /opt/.env
+sudo systemctl daemon-reload
+sudo systemctl start gcp-centos8.service
+sudo systemctl enable gcp-centos8.service
+
+EOT
+  service_account {
+    email  = google_service_account.ops_service_acc.email
+    scopes = ["cloud-platform"]
+  }
+}
+
+resource "google_compute_health_check" "http-health-check" {
+  name        = "http-health-check"
+  description = "Health check via http"
+
+  timeout_sec         = 5
+  check_interval_sec  = 5
+  healthy_threshold   = 3
+  unhealthy_threshold = 5
+
+  http_health_check {
+    port_name          = "health-check-port"
+    port = 3000
+    # port_specification = 3000
+    # host               = "1.2.3.4"
+    request_path       = "/healthz"
+    proxy_header       = "NONE"
+    response           = "I AM HEALTHY"
+  }
+}
+
+resource "google_compute_region_autoscaler" "foobar" {
+  name   = "my-region-autoscaler"
+  region = var.region
+  target = google_compute_region_instance_group_manager.foobar.id
+
+  autoscaling_policy {
+    max_replicas    = 9
+    min_replicas    = 3
+    cooldown_period = 180
+
+    cpu_utilization {
+      target = 0.5
+    }
+  }
+}
+
+resource "google_compute_region_instance_group_manager" "appserver" {
+  name = "appserver-igm"
+  base_instance_name         = "app"
+  region                     = var.region
+  distribution_policy_zones  = ["us-west2-a", "us-west2-b","us-west2-c"]
+  distribution_policy_target_shape = "BALANCED"
+  version {
+    instance_template = google_compute_region_instance_template.default.self_link_unique
+  }
+
+  all_instances_config {
+    metadata = {
+      metadata_key = "metadata_value"
+    }
+    labels = {
+      label_key = "label_value"
+    }
+  }
+
+  target_pools = [google_compute_target_pool.appserver.id]
+  target_size  = 2
+
+  named_port {
+    name = "custom"
+    port = 8888
+  }
+
+  auto_healing_policies {
+    health_check      = google_compute_health_check.http-health-check.id
+    initial_delay_sec = 300
+  }
+}
+
+resource "google_compute_target_pool" "default" {
+  name = "target-instance-pool"
+
+  # instances = [
+  #   "us-central1-a/myinstance1",
+  #   "us-central1-b/myinstance2",
+  # ]
+
+  health_checks = [
+    google_compute_http_health_check.default.name,
+  ]
+}
+
 resource "google_compute_global_address" "default" {
   provider      = google-beta
   project       = google_compute_network.main_vpc_network[0].project
