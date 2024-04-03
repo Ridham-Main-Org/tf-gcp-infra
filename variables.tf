@@ -170,3 +170,29 @@ variable "topic_message_retentaion" {
 variable "subscription_message_retention" {
 
 }
+
+variable "port-name" {
+
+}
+
+variable "load-balancing-scheme" {
+
+}
+variable "app-port" {
+
+}
+variable "proxy_subnet_cidr_range" {
+
+}
+
+variable "gcp_hc_ip1" {
+
+}
+
+variable "gcp_hc_ip2" {
+
+}
+
+variable "cpu_utilization_target" {
+
+}
