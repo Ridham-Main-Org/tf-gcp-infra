@@ -238,8 +238,8 @@ resource "google_compute_forwarding_rule" "default" {
 resource "google_compute_region_ssl_certificate" "default" {
   region      = var.region
   name_prefix = "my-ssl-certificate"
-  private_key = file("./ssl-my-webapp_me/private.key.pem")
-  certificate = file("./ssl-my-webapp_me/my-webapp_me.crt")
+  private_key = file(var.ssl_private_key)
+  certificate = file(var.ssl_certi)
 
   lifecycle {
     create_before_destroy = true
