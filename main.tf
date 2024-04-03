@@ -351,8 +351,10 @@ resource "google_sql_database_instance" "postgres" {
 }
 
 resource "google_sql_database" "database" {
-  name     = "webapp"
-  instance = google_sql_database_instance.postgres.name
+  name       = "webapp"
+  instance   = google_sql_database_instance.postgres.name
+  depends_on = [google_sql_database_instance.postgres]
+
 }
 
 resource "random_password" "password" {
