@@ -135,6 +135,14 @@ variable "monitoring_role" {
 
 }
 
+variable "ssl_private_key" {
+
+}
+
+variable "ssl_certi" {
+
+}
+
 variable "db_port" {
 
 }
