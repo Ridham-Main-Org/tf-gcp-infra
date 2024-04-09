@@ -93,6 +93,9 @@ resource "google_compute_region_instance_template" "template" {
     device_name  = "persistent-disk-0"
     mode         = "READ_WRITE"
     type         = "PERSISTENT"
+    disk_encryption_key {
+      kms_key_self_link = google_kms_crypto_key.vm-key.id
+    }
   }
   network_interface {
     network    = google_compute_network.main_vpc_network[0].name
@@ -125,6 +128,11 @@ EOT
     email  = google_service_account.ops_service_acc.email
     scopes = ["cloud-platform"]
   }
+  # service_account {
+  #   email  = "service-1039297424411@computesystem.iam.gserviceaccount.com"
+  #   scopes = ["cloud-platform"]
+  # }
+
 }
 
 resource "google_compute_region_health_check" "http-health-check" {
@@ -309,6 +317,92 @@ resource "google_compute_firewall" "default" {
 #   target_tags = ["load-balanced-backend"]
 # }
 ############################################################################################
+# resource "google_service_account" "cmek_service_acc" {
+#   account_id   = "cmek-service-account-id-new"
+#   display_name = "CMEK Service Account"
+#   project      = var.project
+# }
+
+# CLOUD KEY RING
+resource "google_kms_key_ring" "keyring" {
+  name     = "my-keyring-1"
+  location = var.region
+}
+
+
+# CLOUD VM CRYPTO KEY
+resource "google_kms_crypto_key" "vm-key" {
+  name            = "vm-crypto-key"
+  key_ring        = google_kms_key_ring.keyring.id
+  rotation_period = "2592000s"
+
+  lifecycle {
+    prevent_destroy = false
+  }
+}
+
+# CLOUD VM IAM BINDING
+resource "google_kms_crypto_key_iam_binding" "vm_key_binding" {
+  provider      = google-beta
+  crypto_key_id = google_kms_crypto_key.vm-key.id
+  role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
+  # members = ["serviceAccount:${google_service_account.service_account.email}"]
+  members = ["serviceAccount:service-1039297424411@compute-system.iam.gserviceaccount.com"]
+
+}
+
+# CLOUD SQL CRYPTO KEY
+resource "google_kms_crypto_key" "cloudsql-key" {
+  provider        = google-beta
+  name            = "cloudsql-crypto-key"
+  key_ring        = google_kms_key_ring.keyring.id
+  rotation_period = "7776000s"
+  purpose         = "ENCRYPT_DECRYPT"
+
+  lifecycle {
+    prevent_destroy = false
+  }
+}
+
+# CLOUD SQL SERVICE ACCOUNT & BINDING
+resource "google_project_service_identity" "gcp_sa_cloud_sql" {
+  provider = google-beta
+  service  = "sqladmin.googleapis.com"
+}
+resource "google_kms_crypto_key_iam_binding" "cloudsql_key_binding" {
+  provider      = google-beta
+  crypto_key_id = google_kms_crypto_key.cloudsql-key.id
+  role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
+
+  members = [
+    "serviceAccount:${google_project_service_identity.gcp_sa_cloud_sql.email}",
+  ]
+}
+
+# CLOUD BUCKET CRYPTO KEY
+resource "google_kms_crypto_key" "bucket-key" {
+  name            = "bucket-crypto-key"
+  key_ring        = google_kms_key_ring.keyring.id
+  rotation_period = "7776000s"
+
+  lifecycle {
+    prevent_destroy = false
+  }
+}
+
+# BUCKET SERVICE ACCOUNT & BINDING
+data "google_storage_project_service_account" "gcs_account" {
+}
+resource "google_kms_crypto_key_iam_binding" "bucket_key_binding" {
+  crypto_key_id = google_kms_crypto_key.bucket-key.id
+  role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
+
+  members = [
+    "serviceAccount:${data.google_storage_project_service_account.gcs_account.email_address}",
+  ]
+}
+
+
 resource "google_compute_global_address" "default" {
   provider      = google-beta
   project       = google_compute_network.main_vpc_network[0].project
@@ -334,8 +428,9 @@ resource "google_sql_database_instance" "postgres" {
   name                = var.postgres_instance_name
   database_version    = var.db_version
   region              = var.region_sql_instance
-  depends_on          = [google_service_networking_connection.private_vpc_connection]
+  depends_on          = [google_service_networking_connection.private_vpc_connection, google_kms_crypto_key_iam_binding.cloudsql_key_binding]
   deletion_protection = false
+  encryption_key_name = google_kms_crypto_key.cloudsql-key.id
 
   settings {
     tier              = "db-custom-2-7680"
@@ -374,6 +469,7 @@ resource "google_service_account" "ops_service_acc" {
   display_name = "Ops agent Service Account"
   project      = var.project
 }
+
 
 resource "google_project_iam_binding" "logging-role" {
   project = var.project
@@ -451,6 +547,10 @@ resource "google_storage_bucket" "my_bucket" {
   force_destroy = true
   location      = var.region
   project       = var.project
+  depends_on    = [google_kms_crypto_key_iam_binding.bucket_key_binding]
+  encryption {
+    default_kms_key_name = google_kms_crypto_key.bucket-key.id
+  }
 }
 
 resource "google_storage_bucket_object" "object" {
