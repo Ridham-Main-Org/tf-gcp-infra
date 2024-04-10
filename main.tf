@@ -317,15 +317,10 @@ resource "google_compute_firewall" "default" {
 #   target_tags = ["load-balanced-backend"]
 # }
 ############################################################################################
-# resource "google_service_account" "cmek_service_acc" {
-#   account_id   = "cmek-service-account-id-new"
-#   display_name = "CMEK Service Account"
-#   project      = var.project
-# }
 
 # CLOUD KEY RING
 resource "google_kms_key_ring" "keyring" {
-  name     = "my-keyring-1"
+  name     = var.keyring_name
   location = var.region
 }
 
@@ -334,7 +329,7 @@ resource "google_kms_key_ring" "keyring" {
 resource "google_kms_crypto_key" "vm-key" {
   name            = "vm-crypto-key"
   key_ring        = google_kms_key_ring.keyring.id
-  rotation_period = "2592000s"
+  rotation_period = var.key_rotation_period
 
   lifecycle {
     prevent_destroy = false
@@ -345,7 +340,7 @@ resource "google_kms_crypto_key" "vm-key" {
 resource "google_kms_crypto_key_iam_binding" "vm_key_binding" {
   provider      = google-beta
   crypto_key_id = google_kms_crypto_key.vm-key.id
-  role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
+  role          = var.encrypter_decrypter_role
   # members = ["serviceAccount:${google_service_account.service_account.email}"]
   members = ["serviceAccount:service-1039297424411@compute-system.iam.gserviceaccount.com"]
 
@@ -356,7 +351,7 @@ resource "google_kms_crypto_key" "cloudsql-key" {
   provider        = google-beta
   name            = "cloudsql-crypto-key"
   key_ring        = google_kms_key_ring.keyring.id
-  rotation_period = "7776000s"
+  rotation_period = var.key_rotation_period
   purpose         = "ENCRYPT_DECRYPT"
 
   lifecycle {
@@ -367,12 +362,12 @@ resource "google_kms_crypto_key" "cloudsql-key" {
 # CLOUD SQL SERVICE ACCOUNT & BINDING
 resource "google_project_service_identity" "gcp_sa_cloud_sql" {
   provider = google-beta
-  service  = "sqladmin.googleapis.com"
+  service  = var.sql_admin_api
 }
 resource "google_kms_crypto_key_iam_binding" "cloudsql_key_binding" {
   provider      = google-beta
   crypto_key_id = google_kms_crypto_key.cloudsql-key.id
-  role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
+  role          = var.encrypter_decrypter_role
 
   members = [
     "serviceAccount:${google_project_service_identity.gcp_sa_cloud_sql.email}",
@@ -383,7 +378,7 @@ resource "google_kms_crypto_key_iam_binding" "cloudsql_key_binding" {
 resource "google_kms_crypto_key" "bucket-key" {
   name            = "bucket-crypto-key"
   key_ring        = google_kms_key_ring.keyring.id
-  rotation_period = "7776000s"
+  rotation_period = var.key_rotation_period
 
   lifecycle {
     prevent_destroy = false
@@ -395,7 +390,7 @@ data "google_storage_project_service_account" "gcs_account" {
 }
 resource "google_kms_crypto_key_iam_binding" "bucket_key_binding" {
   crypto_key_id = google_kms_crypto_key.bucket-key.id
-  role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
+  role          = var.encrypter_decrypter_role
 
   members = [
     "serviceAccount:${data.google_storage_project_service_account.gcs_account.email_address}",
