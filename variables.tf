@@ -204,3 +204,18 @@ variable "gcp_hc_ip2" {
 variable "cpu_utilization_target" {
 
 }
+
+variable "keyring_name" {
+
+}
+
+variable "sql_admin_api" {
+
+}
+variable "encrypter_decrypter_role" {
+
+}
+
+variable "key_rotation_period" {
+
+}
